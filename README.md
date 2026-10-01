@@ -1,35 +1,49 @@
-![Sign](https://i.imgur.com/bovh598.png)
+# DSSW - Damn Small Secure Web
 
-Damn Small Vulnerable Web [![Python 3.x](https://img.shields.io/badge/python-3.x-yellow.svg)](https://www.python.org/) [![License](https://img.shields.io/badge/license-Unlicense-red.svg)](https://github.com/stamparm/DSVW/blob/master/LICENSE)
-=========
+A hardened fork of DSVW, side-by-side with the vulnerable version.
 
-**Damn Small Vulnerable Web** (DSVW) is a deliberately vulnerable web application written in under 100 lines of code, created for educational purposes. It supports majority of (most popular) web application vulnerabilities together with appropriate attacks.
+## Comparison
 
-![XSS](http://i.imgur.com/BoSOgJs.png)
+| Attack | DSVW :65412 | DSSW :65413 |
+|---|---|---|
+| File read via file:// | leaks /etc/passwd | Scheme not allowed |
+| XPath injection | returns admin | returns - |
+| SQLi auth bypass | Welcome admin | incorrect |
+| Reflected XSS | executes | escaped |
+| Open redirect | redirects | rejected |
+| JSONP XSS | executes | rejected |
+| Header injection | injects | falls back to utf8 |
+| Memory DoS | OOM | capped at 1000 |
 
-Quick start
-----
+## The 12 fixes
 
-Run the following command:
-```
-$ python3 dsvw.py 
-Damn Small Vulnerable Web (DSVW) < 100 LoC (Lines of Code) #v0.2a
- by: Miroslav Stampar (@stamparm)
+1. SQL injection in id - parameterized query (?)
+2. Reflected XSS in v - html.escape on replacement
+3. Path traversal in path - reject URI schemes, realpath, trailing separator
+4. DNS injection in domain - strict hostname regex
+5. XXE in xml - XMLParser(load_dtd=False, resolve_entities=False, no_network=True)
+6. XPath injection in name - variable binding ($n)
 
-[i] running HTTP server at 'http://127.0.0.1:65412'...
-```
+7. Memory DoS in size - cap at 1000
+8. SQL injection in comment - parameterized INSERT
+9. Open redirect in redir - same-origin only, reject //
+10. JSONP XSS in users.json - callback identifier regex
+11. SQL injection in login - parameterized SELECT
+12. Header injection in charset - whitelist
 
-and navigate your browser to http://127.0.0.1:65412/:
+## Reproduction
 
-![DSVW](http://i.imgur.com/9nG4mwu.png)
+Terminal 1:
+cd ~/DSVW && python3 dsvw.py
 
-Requirements
-----
+Terminal 2:
+cd ~/DSVW && python3 dssw.py
 
-Python (**3.x**) is required for running this program. Items *XML External Entity (local)*, *XML External Entity (remote)* and *Blind XPath Injection (boolean)* require installation of `python-lxml` (e.g. `apt-get install python-lxml`). Otherwise, those will be disabled.
+Test:
+curl -s "http://127.0.0.1:65412/?path=file:///etc/passwd"   # leaks
+curl -s "http://127.0.0.1:65413/?path=file:///etc/passwd"   # Scheme not allowed
 
-To install lxml via pip, run the following command:
+## Credits
 
-```
-pip install -r requirements.txt
-```
+Original DSVW by Miroslav Stampar (github.com/stamparm/DSVW).
+License: Unlicense (public domain) - inherited from DSVW.
