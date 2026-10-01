@@ -27,18 +27,28 @@ class ReqHandler(http.server.BaseHTTPRequestHandler):
         try:
             if path == '/':
                 if "id" in params:
-                    cursor.execute("SELECT id, username, name, surname FROM users WHERE id=" + params["id"])
+                    cursor.execute("SELECT id, username, name, surname FROM users WHERE id=?", (params["id"],))
                     content += "<div><span>Result(s):</span></div><table><thead><th>id</th><th>username</th><th>name</th><th>surname</th></thead>%s</table>%s" % ("".join("<tr>%s</tr>" % "".join("<td>%s</td>" % ("-" if _ is None else _) for _ in row) for row in cursor.fetchall()), HTML_POSTFIX)
                 elif "v" in params:
                     content += re.sub(r"(v<b>)[^<]+(</b>)", r"\g<1>%s\g<2>" % params["v"], HTML_POSTFIX)
                 elif "object" in params:
-                    content = str(pickle.loads(params["object"].encode()))
+                    # Pickle deserialization disabled
+                    content = "Pickle deserialization is disabled."
                 elif "path" in params:
-                    content = (open(os.path.abspath(params["path"]), "rb") if not "://" in params["path"] else urllib.request.urlopen(params["path"])).read().decode()
+                    safe_path = os.path.abspath(params["path"])
+                    if safe_path.startswith(os.getcwd()):
+                        content = (open(safe_path, "rb") if not "://" in params["path"] else urllib.request.urlopen(params["path"])).read().decode()
+                    else:
+                        content = "Access denied. Path must be within DSVW directory."
                 elif "domain" in params:
-                    content = subprocess.run("nslookup " + params["domain"], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE, text=True).stdout
+                    content = subprocess.run(["nslookup", params["domain"]], capture_output=True, text=True).stdout
                 elif "xml" in params:
-                    content = lxml.etree.tostring(lxml.etree.parse(io.BytesIO(params["xml"].encode()), lxml.etree.XMLParser(load_dtd=True, resolve_entities=True, no_network=False)), pretty_print=True).decode()
+                    # Safe XML parser (XXE disabled)
+                    try:
+                        parser = lxml.etree.XMLParser(load_dtd=False, resolve_entities=False, no_network=True)
+                        content = lxml.etree.tostring(lxml.etree.parse(io.BytesIO(params["xml"].encode()), parser), pretty_print=True).decode()
+                    except Exception as e:
+                        content = f"XML parsing error: {e}"
                 elif "name" in params:
                     found = lxml.etree.parse(io.BytesIO(USERS_XML.encode())).xpath(".//user[name/text()='%s']" % params["name"])
                     content += "<b>Surname:</b> %s%s" % (found[-1].find("surname").text if found else "-", HTML_POSTFIX)
@@ -54,7 +64,9 @@ class ReqHandler(http.server.BaseHTTPRequestHandler):
                         content += "<div><span>Comment(s):</span></div><table><thead><th>id</th><th>comment</th><th>time</th></thead>%s</table>%s" % ("".join("<tr>%s</tr>" % "".join("<td>%s</td>" % ("-" if _ is None else _) for _ in row) for row in cursor.fetchall()), HTML_POSTFIX)
                 elif "include" in params:
                     backup, sys.stdout, program, envs = sys.stdout, io.StringIO(), (open(params["include"], "rb") if not "://" in params["include"] else urllib.request.urlopen(params["include"])).read(), {"DOCUMENT_ROOT": os.getcwd(), "HTTP_USER_AGENT": self.headers.get("User-Agent"), "REMOTE_ADDR": self.client_address[0], "REMOTE_PORT": self.client_address[1], "PATH": path, "QUERY_STRING": query}
-                    exec(program, envs)
+                    # exec(program, envs)  # DISABLED FOR SECURITY
+                    content = "Remote code execution is disabled."
+                    sys.stdout = backup
                     content += sys.stdout.getvalue()
                     sys.stdout = backup
                 elif "redir" in params:
